@@ -161,23 +161,31 @@
             const withValue = {};
             for (const [key, timestamps] of Object.entries(usage)) {
                 const ammount = Object.values(timestamps).reduce((acc, val) => acc + val, 0);
-                const element = emoteElement(emotes[key], ammount);
-                withValue[key] = { key, ammount, timestamps, element };
+                try {
+                    const element = emoteElement(emotes[key], ammount);
+                    withValue[key] = { key, ammount, timestamps, element };
+                } catch (e) {
+                    console.error(`Failed to create element for emote "${key}". Error: `);
+                    console.error(e);
+                }
             }
 
             const withValueSorted = Object.values(withValue).sort((a, b) => (b.usage - a.usage));
 
-
             for (const emote of withValueSorted) {
-                const element = emoteElement(emote);
-                emoteList.appendChild(element);
+                emoteList.appendChild(emote);
             }
 
             for (const emote of Object.values(emotes)) {
                 if (withValue.includes(emote.alias)) { continue; }
 
-                const element = emoteElement(emote);
-                emoteList.appendChild(element);
+                try {
+                    const element = emoteElement(emote);
+                    emoteList.appendChild(element);
+                } catch (e) {
+                    console.error(`Failed to create element for emote "${key}". Error: `);
+                    console.error(e);
+                }
             }
         }
 
