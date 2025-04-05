@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotes</title>
+
+    <style>
+        body {
+            background-color: #3c3c3c;
+        }
+
+        .emote {
+            background-color: white;
+            padding: 5px;
+            height: 150px;
+            min-width: 150px;
+            width: fit-content;
+
+            text-align: center;
+
+            border: 1px solid black;
+        }
+
+        .emote-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .ammount {
+            font-size: 1.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main"></div>
+    <script>
+        function emoteElement(emote, ammount = 0) {
+            const div = document.createElement("div");
+            div.className = "emote";
+            div.title = emote.alias;
+
+            const subDiv = document.createElement("div");
+            subDiv.className = "ammount";
+            subDiv.title = "The ammount sent";
+            subDiv.textContent = ammount;
+
+            div.appendChild(subDiv);
+
+            const img = document.createElement("img");
+            const imageList = emote.images.emote.images;
+            const image = imageList.find(({ mime, scale, frameCount }) => (mime === "image/webp" && scale === 3 && frameCount > 1)) || imageList[0];
+            img.src = image.url;
+            img.alt = "emote";
+
+            div.appendChild(img);
+
+            const subDivName = document.createElement("div");
+            subDivName.className = "name";
+            subDivName.textContent = emote.alias;
+
+            div.appendChild(subDivName);
+
+            return div;
+        }
+
+        async function fetchData(type) {
+            const call = await fetch(`/${type}.json`,);
+            if (call.ok) {
+                const data = await call.json();
+                return data;
+            } else {
+                throw Error(`Couldn't load /${type}.json`)
+            }
+        }
+
+        async function main(div) {
+            if (!div) { console.error("ups, too early"); }
+
+            const usage = await fetchData("usage");
+            const emotes = await fetchData("emotes");
+
+            const emoteList = document.createElement("div");
+            emoteList.className = "emote-list";
+            div.appendChild(emoteList);
+
+            let withValue = [];
+            for (const [key, timestamps] of Object.entries(usage)) {
+                const element = emoteElement(json[key], Object.values(timestamps).reduce((acc, val) => acc + val), 0);
+                emoteList.appendChild(element);
+                withValue.push(key);
+            }
+
+            for (const emote of Object.values(emotes)) {
+                if (withValue.includes(emote.alias)) { continue; }
+
+                const element = emoteElement(emote);
+                emoteList.appendChild(element);
+            }
+        }
+
+
+        main(document.querySelector("#main"));
+    </script>
+</body>
+
+</html>
