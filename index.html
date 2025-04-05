@@ -177,7 +177,7 @@
             }
 
             for (const emote of Object.values(emotes)) {
-                if (withValue.includes(emote.alias)) { continue; }
+                if (Object.keys(withValue).includes(emote.alias)) { continue; }
 
                 try {
                     const element = emoteElement(emote);
