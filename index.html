@@ -70,12 +70,12 @@
         }
 
         async function fetchData(type) {
-            const call = await fetch(`/${type}.json`,);
+            const call = await fetch(`${type}.json`,);
             if (call.ok) {
                 const data = await call.json();
                 return data;
             } else {
-                throw Error(`Couldn't load /${type}.json`)
+                throw Error(`Couldn't load "${type}.json"`)
             }
         }
 
