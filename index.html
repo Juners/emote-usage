@@ -40,6 +40,60 @@
 <body>
     <div id="main"></div>
     <script>
+
+        let lazyLoadTimeout;
+        function lazyLoadWithEvents() {
+            if (lazyLoadTimeout) {
+                clearTimeout(lazyLoadTimeout);
+            }
+
+            lazyLoadTimeout = setTimeout(() => {
+                const emoteListWrapper = document.getElementById('emote-list');
+                const lazyLoadImages = document.querySelectorAll('img.lazy');
+
+                if (emoteListWrapper) {
+                    const scrollTop = emoteListWrapper.scrollTop;
+                    lazyLoadImages.forEach((image) => {
+                        if (image.offsetTop < window.innerHeight + scrollTop) {
+                            image.src = image.dataset.src || '';
+                            image.classList.remove('lazy');
+                        }
+                    });
+
+                    if (lazyLoadImages.length == 0) {
+                        document.getElementById('emote-list')?.removeEventListener('scroll', lazyLoadWithEvents);
+                        window.removeEventListener('resize', lazyLoadWithEvents);
+                        window.removeEventListener('orientationChange', lazyLoadWithEvents);
+                    }
+                }
+            }, 20);
+        }
+
+        function lazyLoadWithObserver() {
+            if (lazyLoadTimeout) {
+                clearTimeout(lazyLoadTimeout);
+            }
+
+            lazyLoadTimeout = setTimeout(() => {
+                const lazyLoadImages = document.querySelectorAll('img.lazy');
+
+                const imageObserver = new IntersectionObserver(function (entries, _observer) {
+                    entries.forEach(function (entry) {
+                        if (entry.isIntersecting) {
+                            let image = entry.target;
+                            image.src = image.dataset.src || '';
+                            image.classList.remove('lazy');
+                            imageObserver.unobserve(image);
+                        }
+                    });
+                });
+
+                lazyLoadImages.forEach(function (image) {
+                    imageObserver.observe(image);
+                });
+            }, 20);
+        }
+
         function emoteElement(emote, ammount = 0) {
             const div = document.createElement("div");
             div.className = "emote";
@@ -55,8 +109,9 @@
             const img = document.createElement("img");
             const imageList = emote.images.emote.images;
             const image = imageList.find(({ mime, scale, frameCount }) => (mime === "image/webp" && scale === 3 && frameCount > 1)) || imageList[0];
-            img.src = image.url;
+            img.setAttribute("data-src", image.url);
             img.alt = "emote";
+            img.className = "lazy"
 
             div.appendChild(img);
 
@@ -85,13 +140,24 @@
             const usage = await fetchData("usage");
             const emotes = await fetchData("emotes");
 
+
+            if (window.IntersectionObserver) {
+                lazyLoadWithObserver();
+            } else {
+                lazyLoadWithEvents();
+
+                document.getElementById('emote-list')?.addEventListener('scroll', lazyLoadWithEvents);
+                window.addEventListener('resize', lazyLoadWithEvents);
+                window.addEventListener('orientationChange', lazyLoadWithEvents);
+            }
+
             const emoteList = document.createElement("div");
             emoteList.className = "emote-list";
             div.appendChild(emoteList);
 
             let withValue = [];
             for (const [key, timestamps] of Object.entries(usage)) {
-                const element = emoteElement(json[key], Object.values(timestamps).reduce((acc, val) => acc + val), 0);
+                const element = emoteElement(emotes[key], Object.values(timestamps).reduce((acc, val) => acc + val), 0);
                 emoteList.appendChild(element);
                 withValue.push(key);
             }
