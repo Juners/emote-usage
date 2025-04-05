@@ -173,7 +173,7 @@
             const withValueSorted = Object.values(withValue).sort((a, b) => (b.usage - a.usage));
 
             for (const emote of withValueSorted) {
-                emoteList.appendChild(emote);
+                emoteList.appendChild(emote.element);
             }
 
             for (const emote of Object.values(emotes)) {
