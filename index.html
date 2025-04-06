@@ -101,6 +101,7 @@
             const div = document.createElement("div");
             div.className = "emote";
             div.title = emote.alias;
+            div.addEventListener("click", () => {open(`https://7tv.app/emotes/${emote.id}`)});
 
             const subDiv = document.createElement("div");
             subDiv.className = "ammount";
