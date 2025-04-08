@@ -1,0 +1,655 @@
+<!-- Readers beware. I got too silly and I kept making the spaghetti bigger by thingking "Last thing and I abandon this". Good luck. -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Look at this emote usage graphs</title>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #2f2f2f;
+        }
+
+        #main {
+            padding: 5px;
+            box-sizing: border-box;
+
+            display: flex;
+            flex-direction: column;
+            flex-wrap: nowrap;
+            height: 100vh;
+            gap: 5px;
+        }
+
+        #main>div {
+            flex: 1;
+            align-content: center;
+        }
+
+        .question {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            gap: 2px;
+        }
+
+        #main>form {
+            background-color: white;
+        }
+
+        #canvas {
+            background-color: white;
+            flex: 1;
+        }
+
+        .questions {
+            background-color: white;
+            padding: 5px;
+
+        }
+
+        .question>input,
+        .question>label {
+            cursor: pointer;
+        }
+
+        .emotes {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 5px;
+        }
+
+        .emotes .emote {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .emotes .emote image {
+            height: 50px;
+        }
+
+        .emotes .emote:hover {
+            background-color: #a5a5a5;
+        }
+
+        .emotes .emote .delete,
+        .emotes .add button {
+            cursor: pointer;
+        }
+
+        @media screen and (min-width: 500px) {
+
+            .question {
+                flex-direction: column;
+                gap: 0;
+            }
+
+            #main {
+                flex-direction: row;
+            }
+
+        }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
+        integrity="sha512-CQBWl4fJHWbryGE+Pc7UAxWMUMNMWzWxF4SQo9CgkJIN1kx6djDQZjh3Y8SZ1d+6I+1zze6Z7kHXO7q3UyZAWw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <script>
+        let chart;
+
+        function timestampsData(usageData, sourceMode) {
+            const data = sourceMode ? Object.entries(usageData).map(([k, v]) => ([k, Object.values(v).flat()])) : Object.values(usageData);
+
+            function flatten(stampsMap) {
+                const flattened = stampsMap.flatMap(Object.keys).map(x => parseInt(x));
+                const sortedStamps = Array.from(new Set(flattened)).sort((a, b) => a - b);
+
+                return {
+                    earliest: sortedStamps[0],
+                    latest: sortedStamps[sortedStamps.length - 1],
+                    total: flattened.length,
+                };
+            }
+
+            let stamps = [];
+            if (sourceMode) {
+                stamps = Object.fromEntries(data.map(([k, v]) => ([k, flatten(v)])));
+            } else {
+                stamps = [flatten(Object.values(data))];
+            }
+
+            return stamps;
+        }
+
+
+
+        function random(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+
+        let usedColors = [];
+        function getNewColor() {
+            let color, i = 0;
+            do {
+                color = `rgb(${random(0, 255)}, ${random(0, 255)}, ${random(0, 255)})`;
+                if (usedColors.includes(color)) {
+                    color = undefined;
+                } else {
+                    usedColors.push(color);
+                }
+            } while (++i < 50 || !color);
+
+            return color;
+        }
+
+        function main(usageData, graphType, groupBy, timeKind) {
+            if (chart) { chart.destroy(); }
+
+            // 10 minutos
+            const OFFSET = 10;
+            const OFFSET_MINS = OFFSET * 60;
+            const OFFSET_PERC = OFFSET;
+
+            const THE_OFFSET = timeKind === "percentage" ? OFFSET_PERC : OFFSET_MINS;
+
+            const dataPerSource = timestampsData(usageData, groupBy.includes("source"));
+            const longestOfAll = Object.values(dataPerSource).map(x => x.latest).sort((a, b) => b - a)[0];
+
+            function howManySteps() {
+                return timeKind === "percentage" ? (100 / OFFSET_PERC) + 1 : Math.ceil(parseInt(longestOfAll) / OFFSET_MINS) + 1;
+            }
+
+            function stepAt(index) {
+                return THE_OFFSET * index;
+            }
+
+            function leftPad(str, size, fill = "") {
+                const filler = str.length < size ? (new Array(size - str.length)).fill(fill).join() : "";
+                return `${filler}${str}`
+            }
+
+            function formatDate(seconds) {
+                const horas = Math.trunc(seconds / 3600).toString();
+                const minutos = Math.trunc((seconds % 3600) / 60).toString();
+                const leftovers = ((seconds % 3600) % 60).toString();
+
+                return `${leftPad(horas, 1, "0")}:${leftPad(minutos, 2, "0")}:${leftPad(leftovers, 2, "0")}`;
+            }
+
+            function getColorFor(source) {
+                return _filteredEmotes[source].color || getNewColor();
+            }
+
+            function emoteAsDataset([emote, mappedTimes = {}]) {
+                const times = Object.entries(mappedTimes);
+
+                const values = new Array(howManySteps()).fill(0);
+                for (const [timestamp, ammount] of times) {
+                    const step = getStepFor(timestamp);
+                    if (!values[step]) values[step] = 0;
+                    values[step] += ammount;
+                }
+
+                let acc = 0;
+                return {
+                    label: emote,
+                    data: Array.from(values, (v, k, a) => {
+                        if (graphType === "cumulative") {
+                            if (v > 0) acc += v;
+                        }
+
+                        return (acc || v) ?? 0;
+                    }),
+                    fill: false,
+                    borderColor: getColorFor(emote),
+                    tension: 0,
+                }
+            }
+
+            function streamAsDataset(filteredEmote) {
+                return function mapper([stream, emoteData]) {
+                    const emoteEntries = Object.entries(emoteData[filteredEmote]);
+
+                    const values = [];
+                    for (const [timestamp, ammount] of emoteEntries) {
+                        const step = getStepFor(timestamp, stream);
+                        if (!values[step]) values[step] = 0;
+                        values[step] += ammount;
+                    }
+
+                    let acc = 0;
+                    return {
+                        label: stream,
+                        data: Array.from(values, (v, k, a) => {
+                            if (graphType === "cumulative") {
+                                if (v > 0) acc += v;
+                            }
+
+                            return (acc || v) ?? 0;
+                        }),
+                        fill: false,
+                        borderColor: getNewColor(),
+                        tension: 0,
+                    }
+                }
+            }
+
+            function streamAndEmotesAsDataset(usageDataEntries, filteredEmotes) {
+                const datasets = [];
+                for (const emote of filteredEmotes) {
+                    const dataset = usageDataEntries.map(streamAsDataset(emote)).map(dataset => ({ ...dataset, label: `${emote} (${dataset.label})` }));
+                    datasets.push(dataset);
+                }
+                return datasets.flat();
+            }
+
+            function getStepFor(timestamp, origin = 0) {
+                function percentage() {
+                    const percRaw = (timestamp / dataPerSource[origin].latest) * 100;
+                    return percRaw / OFFSET_PERC;
+
+                }
+
+                function raw() {
+                    return timestamp / OFFSET_MINS;
+                }
+
+                const rawStep = timeKind === "percentage" ? percentage() : raw();
+                // 0 no tiene valores, asi que redondeamos al alza y le sumamos 1
+                return Math.ceil(rawStep) + 1;
+            }
+
+            const labels = Array(howManySteps()).fill("").map((_, i) => i * THE_OFFSET);
+
+            let datasets = [];
+            if (groupBy.includes("source") && groupBy.includes("emote")) {
+                datasets = streamAndEmotesAsDataset(Object.entries(usageData), Object.keys(_filteredEmotes));
+            } else if (groupBy.includes("source")) {
+                datasets = Object.entries(usageData).map(streamAsDataset(Object.keys(_filteredEmotes)[0]));
+            } else if (groupBy.includes("emote")) {
+                const sortedEmotes = Object.fromEntries(Object.entries(usageData).sort(([k1], [k2]) => k1.localeCompare(k2)));
+                datasets = Object.keys(_filteredEmotes).map(k => ([k, sortedEmotes[k]])).map(emoteAsDataset)
+            } else {
+                console.error("Huh?");
+            }
+
+            console.log(datasets);
+
+            chart = new Chart(document.querySelector("#canvas"), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets,
+                },
+                options: {
+                    scales: {
+                        y: {
+                            min: 0,
+                            ticks: {
+                                stepSize: 5,
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                callback: function (value, index, ticks) {
+                                    return timeKind === "percentage" ? `${labels[index]}%` : formatDate(labels[index]);
+                                }
+                            },
+
+                        }
+                    },
+                    interaction: {
+                        axis: "xy",
+                        mode: "index",
+                        intersect: false,
+                    }
+                }
+            });
+        }
+
+    </script>
+
+    <script>
+        let _filteredEmotes = { "!fish": { alias: "!fish", color: "#99d9e9" } };
+        try {
+            _filteredEmotes = JSON.parse(localStorage.getItem("filteredEmotes")) ?? _filteredEmotes;
+        } catch (e) {
+            console.error("Failed parsing JSON for filtered emotes");
+            console.error(e);
+        }
+
+        function populateEmoteDropdown() {
+            const dropdown = document.querySelector("#emote-input");
+
+            for (const child of Array.from(dropdown.childNodes)) {
+                dropdown.removeChild(child);
+            }
+
+            if (emoteObject) {
+                for (const emote of Object.keys(emoteObject).filter(x => !_filteredEmotes[x])) {
+                    if (emote.length > 20) continue;
+
+                    const option = document.createElement("option");
+                    option.textContent = emote;
+                    dropdown.appendChild(option);
+                }
+
+            }
+        }
+
+
+        const animatedWebp = ({ mime, scale, frameCount }) => (mime === "image/webp" && scale === 1 && frameCount > 1);
+        const staticWebp = ({ mime, scale, frameCount }) => (mime === "image/webp" && scale === 1);
+
+        function createEmoteDiv({ alias, color }) {
+            const emoteDiv = document.createElement("div");
+            emoteDiv.classList.add("emote");
+
+            const colorInput = document.createElement("input");
+            colorInput.type = "color";
+            colorInput.value = color;
+            colorInput.addEventListener("change", () => {
+                filteredEmotes[alias].color = color;
+            })
+            emoteDiv.appendChild(colorInput);
+
+            const emoteText = document.createElement("div");
+            emoteText.textContent = alias;
+            emoteDiv.appendChild(emoteText);
+
+            if (emoteObject) {
+                const emoteImg = document.createElement("img");
+                const imageList = emoteObject[alias].images.emote.images;
+                const image = imageList.find(animatedWebp) || imageList.find(staticWebp) || imageList[0];
+                emoteImg.src = image.url;
+                emoteImg.alt = "image";
+                emoteDiv.append(emoteImg);
+            }
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.type = "button";
+            deleteBtn.classList.add("delete");
+            deleteBtn.textContent = "×"
+            deleteBtn.addEventListener("click", () => {
+                delete _filteredEmotes[alias];
+                syncEmoteList();
+            });
+            emoteDiv.appendChild(deleteBtn);
+
+            return emoteDiv;
+        }
+
+        function addEmoteToUIList([alias, emoteObj]) {
+            const emoteContainer = document.querySelector(".emotes .emote-list");
+            const addDiv = emoteContainer.querySelector(".add");
+
+            const emote = createEmoteDiv(emoteObj);
+
+            emoteContainer.insertBefore(emote, addDiv)
+        }
+
+        function onAddEmoteClick(e) {
+            e.preventDefault();
+
+            const input = document.querySelector("#emote-input");
+            const text = input.value;
+            if (text.length > 0 && !_filteredEmotes[text] && emoteObject[text]) {
+                input.value = "";
+                _filteredEmotes[x] = { alias: x, color: getNewColor() };
+                // addEmoteToUIList(text);
+                syncEmoteList();
+            }
+        }
+
+        function syncEmoteList() {
+            const emoteList = document.querySelector(".emote-list");
+            for (const child of Array.from(emoteList.childNodes)) {
+                emoteList.removeChild(child);
+            }
+
+            for (const emote of Object.entries(_filteredEmotes)) {
+                addEmoteToUIList(emote);
+            }
+
+            populateEmoteDropdown();
+        }
+
+        function onwindowload() {
+            fetchEmotes();
+            document.querySelector(".emotes .add button").addEventListener("click", onAddEmoteClick);
+
+            syncEmoteList();
+
+            document.querySelector("#save-emote-list").addEventListener("click", () => {
+                if (confirm("Save the current emote list as the default one?")) {
+                    localStorage.setItem("filteredEmotes", JSON.stringify(_filteredEmotes));
+                }
+            });
+
+            document.querySelector("#load-emote-list").addEventListener("click", () => {
+                if (confirm("Are you sure you want to load the default emote list?")) {
+                    _filteredEmotes = JSON.parse(localStorage.getItem("filteredEmotes"));
+                    syncEmoteList();
+                }
+            });
+        }
+
+        window.addEventListener("load", onwindowload);
+    </script>
+</head>
+
+<body>
+    <div id="main" dropzone="">
+        <form id="form">
+            <input type="file" name="files" id="files" multiple="true" required>
+
+            <div class="questions">
+                <!-- <div id="sources-question" class="question">
+                    <b>Sources: </b>
+        
+                    <input type="radio" id="source-single" name="sourceAmmount" value="single" checked="true" />
+                    <label for="source-single">Single</label>
+        
+                    <input type="radio" id="source-multiple" name="sourceAmmount" value="multiple" />
+                    <label for="source-multiple">Multiple</label>
+                </div>
+        
+                <div id="emotes-question" class="question">
+                    <b>Emotes: </b>
+        
+                    <input type="radio" id="emote-single" name="emoteAmmount" value="single" checked="true" />
+                    <label for="emote-single">Single</label>
+        
+                    <input type="radio" id="emote-multiple" name="emoteAmmount" value="multiple" />
+                    <label for="emote-multiple">Multiple</label>
+                </div> -->
+
+                <div id="type-question" class="question">
+                    <b>Type of graph: </b>
+
+                    <div>
+                        <input type="radio" id="graph-raw" name="graphKind" value="raw" checked="true" />
+                        <label for="graph-raw">Raw</label>
+                    </div>
+
+                    <div>
+                        <input type="radio" id="graph-cumulative" name="graphKind" value="cumulative" />
+                        <label for="graph-cumulative">Cumulative</label>
+                    </div>
+                </div>
+
+                <div id="group-question" class="question">
+                    <b>Group by: </b>
+
+                    <div><input type="checkbox" id="group-multiple" name="groupAmmount" value="emote" checked />
+                        <label for="group-multiple">Emote</label>
+                    </div>
+
+                    <div>
+                        <input type="checkbox" id="group-single" name="groupAmmount" value="source" />
+                        <label for="group-single">Source</label>
+                    </div>
+                </div>
+
+                <div id="time-question" class="question">
+                    <b>Time factor: </b>
+
+                    <div>
+                        <input type="radio" id="time-ellapsed" name="timeKind" value="ellapsed" checked="true" />
+                        <label for="time-ellapsed">Time ellapsed</label>
+                    </div>
+
+                    <div>
+                        <input type="radio" id="time-percentage" name="timeKind" value="percentage" />
+                        <label for="time-percentage">Percentage of stream</label>
+                    </div>
+                </div>
+            </div>
+
+            <div>Emotes to use:</div>
+            <hr>
+
+            <div class="emotes">
+                <div>
+                    <button type="button" id="load-emote-list">&#8617;&#65039; Load default</button>
+                    <button type="button" id="save-emote-list">&#128190; Save as default</button>
+                </div>
+
+                <div class="emote-list"></div>
+
+                <div class="add">
+                    <select name="" id="emote-input"></select>
+                    <button type="button">&plus;</button>
+                </div>
+            </div>
+
+            <hr>
+
+            <button>Parse</button>
+        </form>
+
+        <div><canvas id="canvas"></canvas></div>
+    </div>
+
+    <script>
+        async function fetchEmotes() {
+            if (!emoteObject) {
+                emoteObject = await (await fetch("https://juners.github.io/emote-usage/emotes.json")).json();
+
+                populateEmoteDropdown();
+                syncEmoteList();
+            }
+        }
+
+        let emoteObject = undefined;
+
+        // 0: time | 1: user_name | 2: user_color | 3: message
+        const TIME = 0, USER_NAME = 1, USER_COLOR = 2, MESSAGE = 3;
+
+        function formatMemory(bytes) {
+            return `${Math.round(bytes / 1024 / 1024 * 100) / 100}MB`;
+        }
+
+        async function parse(event) {
+            event.preventDefault();
+            const data = new FormData(event.target, event.submitter);
+
+            const start = performance.now();
+
+            const graphType = data.get("graphKind");
+            const groupBy = data.getAll("groupAmmount");
+            const time = data.get("timeKind");
+
+            const fileList = data.getAll("files");
+
+            await new Promise((res) => {
+                setInterval(() => {
+                    if (emoteObject) res();
+                }, 500);
+            })
+
+            const emoteList = Object.keys(emoteObject);
+
+            console.log(`${fileList.length} files to extract from`);
+
+            const usageMapByStream = {};
+            const usageMap = {};
+            let wordsMap = {};
+
+            /** @argument {File} file */
+            function extractEmoteData(file) {
+                return new Promise((res, rej) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const lines = reader.result.split("\n");
+
+                        lines.shift();
+                        for (const line of lines) {
+                            const values = line.split(",");
+                            let message = values.slice(MESSAGE).join("");
+                            message = message.substring(1, message.length - 1);
+
+                            const key = values[TIME];
+                            const words = new Set(message.split(" "));
+                            for (const word of words) {
+                                if (!wordsMap[word]) wordsMap[word] = [];
+                                wordsMap[word].push(key);
+                            }
+                        }
+
+                        let usageObj = usageMap;
+                        if (groupBy.includes("source")) {
+                            usageMapByStream[file.name] = {};
+                            usageObj = usageMapByStream[file.name];
+                        }
+
+                        for (const emote of emoteList) {
+                            const timestamps = wordsMap[emote];
+                            if (timestamps) {
+                                if (!usageObj[emote]) usageObj[emote] = {};
+                                for (const stamp of timestamps) {
+                                    if (!usageObj[emote][stamp]) usageObj[emote][stamp] = 0;
+                                    usageObj[emote][stamp] = usageObj[emote][stamp] + 1;
+                                }
+                            }
+                        }
+
+                        wordsMap = {};
+
+                        res();
+                    }
+
+                    reader.onerror = () => rej(`Failed loading file ${file.name}`);
+
+                    reader.readAsText(file, "utf-8");
+                });
+            }
+
+            for (const file of fileList) {
+                let start = performance.now();
+                console.log(`extracting ${file.name}...`)
+                await extractEmoteData(file);
+                console.log(`done (${Math.round(performance.now() - start)}ms)`);
+            }
+            console.log(`all data extracted!`);
+
+            console.log(`Time ellapsed: ${((performance.now() - start) / 1000).toPrecision(3)}s`);
+
+            main(groupBy.includes("source") ? usageMapByStream : usageMap, graphType, groupBy, time);
+        }
+
+        document.querySelector("#form").addEventListener("submit", parse);
+    </script>
+
+</body>
+
+</html>
