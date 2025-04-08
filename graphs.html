@@ -357,8 +357,8 @@
             const colorInput = document.createElement("input");
             colorInput.type = "color";
             colorInput.value = color;
-            colorInput.addEventListener("change", () => {
-                filteredEmotes[alias].color = color;
+            colorInput.addEventListener("change", (e) => {
+                _filteredEmotes[alias].color = e.target.value;
             })
             emoteDiv.appendChild(colorInput);
 
